@@ -24,33 +24,34 @@ impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
     }
 }
 
-impl<T: Hash, const N: usize, const K: usize> BaluFilter<T, N, K> for AtomicFilter<N, K> {
-    fn insert(&self, item: &T) -> bool {
+impl<const N: usize, const K: usize> AtomicFilter<N, K> {
+    fn operation<T: Hash>(&self, item: &T, write: bool) -> bool {
         let mut hasher = DefaultHasher::new();
         let mut was_there = true;
         for _ in 0..K {
             item.hash(&mut hasher);
             let bit_index = hasher.finish() % 64;
             let shift = 1 << bit_index;
-            let prev = self.contents[(bit_index % N as u64) as usize]
-                .fetch_or(shift, std::sync::atomic::Ordering::SeqCst);
+            let prev = if write {
+                self.contents[(bit_index % N as u64) as usize]
+                    .fetch_or(shift, std::sync::atomic::Ordering::SeqCst)
+            } else {
+                self.contents[(bit_index % N as u64) as usize]
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            };
             was_there &= (prev & shift) == shift;
         }
         was_there
     }
+}
+
+impl<T: Hash, const N: usize, const K: usize> BaluFilter<T, N, K> for AtomicFilter<N, K> {
+    fn insert(&self, item: &T) -> bool {
+        self.operation(item, true)
+    }
 
     fn check(&self, item: &T) -> bool {
-        let mut hasher = DefaultHasher::new();
-        let mut was_there = true;
-        for _ in 0..K {
-            item.hash(&mut hasher);
-            let bit_index = hasher.finish() % 64;
-            let shift = 1 << bit_index;
-            let prev = self.contents[(bit_index % N as u64) as usize]
-                .load(std::sync::atomic::Ordering::Relaxed);
-            was_there &= (prev & shift) != 0;
-        }
-        was_there
+        self.operation(item, false)
     }
 }
 
@@ -69,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_insert_check() {
-        let filter: AtomicFilter<30, 43> = AtomicFilter::default();
+        let filter: AtomicFilter<480, 43> = AtomicFilter::default();
         assert_eq!(false, filter.check(&"tchan"));
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.check(&"tchan"));
