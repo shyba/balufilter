@@ -34,7 +34,15 @@ impl<T: Hash> BaluFilter<T> for AtomicFilter {
     }
 
     fn check(&self, item: &T) -> bool {
-        false
+        let mut hasher = DefaultHasher::new();
+        let mut was_there = false;
+        for index in 0..32 {
+            item.hash(&mut hasher);
+            let hash = hasher.finish();
+            let prev = self.contents[index].load(std::sync::atomic::Ordering::Relaxed);
+            was_there |= (prev & hash) == hash;
+        }
+        was_there
     }
 }
 
@@ -48,6 +56,20 @@ mod tests {
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.insert(&"tchan"));
         assert_eq!(false, filter.insert(&"molejo"));
+        assert_eq!(true, filter.insert(&"molejo"));
+    }
+
+    #[test]
+    fn test_insert_check() {
+        let mut filter = AtomicFilter::new();
+        assert_eq!(false, filter.check(&"tchan"));
+        assert_eq!(false, filter.insert(&"tchan"));
+        assert_eq!(true, filter.check(&"tchan"));
+        assert_eq!(true, filter.insert(&"tchan"));
+
+        assert_eq!(false, filter.check(&"molejo"));
+        assert_eq!(false, filter.insert(&"molejo"));
+        assert_eq!(true, filter.check(&"molejo"));
         assert_eq!(true, filter.insert(&"molejo"));
     }
 
