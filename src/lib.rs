@@ -17,7 +17,9 @@ pub struct AtomicFilter<const N: usize, const K: usize> {
 impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
     fn default() -> Self {
         AtomicFilter {
-            contents: Arc::new(std::array::from_fn::<AtomicU64, N, _>(|_| AtomicU64::new(0))),
+            contents: Arc::new(std::array::from_fn::<AtomicU64, N, _>(|_| {
+                AtomicU64::new(0)
+            })),
         }
     }
 }
@@ -25,24 +27,28 @@ impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
 impl<T: Hash, const N: usize, const K: usize> BaluFilter<T, N, K> for AtomicFilter<N, K> {
     fn insert(&self, item: &T) -> bool {
         let mut hasher = DefaultHasher::new();
-        let mut was_there = false;
-        for index in 0..32 {
+        let mut was_there = true;
+        for _ in 0..K {
             item.hash(&mut hasher);
-            let hash = hasher.finish();
-            let prev = self.contents[index].fetch_or(hash, std::sync::atomic::Ordering::AcqRel);
-            was_there |= (prev & hash) == hash;
+            let bit_index = hasher.finish() % 64;
+            let shift = 1 << bit_index;
+            let prev = self.contents[(bit_index % N as u64) as usize]
+                .fetch_or(shift, std::sync::atomic::Ordering::SeqCst);
+            was_there &= (prev & shift) == shift;
         }
         was_there
     }
 
     fn check(&self, item: &T) -> bool {
         let mut hasher = DefaultHasher::new();
-        let mut was_there = false;
-        for index in 0..K {
+        let mut was_there = true;
+        for _ in 0..K {
             item.hash(&mut hasher);
-            let hash = hasher.finish();
-            let prev = self.contents[index % N].load(std::sync::atomic::Ordering::Relaxed);
-            was_there |= (prev & hash) == hash;
+            let bit_index = hasher.finish() % 64;
+            let shift = 1 << bit_index;
+            let prev = self.contents[(bit_index % N as u64) as usize]
+                .load(std::sync::atomic::Ordering::Relaxed);
+            was_there &= (prev & shift) != 0;
         }
         was_there
     }
@@ -54,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_simple_insert() {
-        let filter: AtomicFilter<32, 30> = AtomicFilter::default();
+        let filter: AtomicFilter<320, 17> = AtomicFilter::default();
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.insert(&"tchan"));
         assert_eq!(false, filter.insert(&"molejo"));
