@@ -3,7 +3,7 @@ use std::sync::{atomic::AtomicU64, Arc};
 use std::collections::hash_map::DefaultHasher;
 
 pub trait BaluFilter<T> where T: Hash {
-    fn insert(&mut self, item: &T) -> bool;
+    fn insert(&self, item: &T) -> bool;
     fn check(&self, item: &T) -> bool;
 }
 
@@ -21,7 +21,7 @@ impl AtomicFilter {
 }
 
 impl<T: Hash> BaluFilter<T> for AtomicFilter {
-    fn insert(&mut self, item: &T) -> bool {
+    fn insert(&self, item: &T) -> bool {
         let mut hasher = DefaultHasher::new();
         let mut was_there = false;
         for index in 0..32 {
