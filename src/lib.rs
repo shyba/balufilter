@@ -1,8 +1,11 @@
-use std::hash::{Hasher, Hash};
-use std::sync::{atomic::AtomicU64, Arc};
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::{atomic::AtomicU64, Arc};
 
-pub trait BaluFilter<T> where T: Hash {
+pub trait BaluFilter<T>
+where
+    T: Hash,
+{
     fn insert(&self, item: &T) -> bool;
     fn check(&self, item: &T) -> bool;
 }
@@ -48,11 +51,11 @@ impl<T: Hash> BaluFilter<T> for AtomicFilter {
 
 #[cfg(test)]
 mod tests {
-    use crate::{BaluFilter, AtomicFilter};
+    use crate::{AtomicFilter, BaluFilter};
 
     #[test]
     fn test_simple_insert() {
-        let mut filter = AtomicFilter::new();
+        let filter = AtomicFilter::new();
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.insert(&"tchan"));
         assert_eq!(false, filter.insert(&"molejo"));
@@ -61,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_insert_check() {
-        let mut filter = AtomicFilter::new();
+        let filter = AtomicFilter::new();
         assert_eq!(false, filter.check(&"tchan"));
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.check(&"tchan"));
@@ -72,5 +75,4 @@ mod tests {
         assert_eq!(true, filter.check(&"molejo"));
         assert_eq!(true, filter.insert(&"molejo"));
     }
-
 }
