@@ -1,6 +1,7 @@
+use std::hash::Hash;
 use std::sync::{atomic::AtomicU64, Arc};
 
-pub trait BaluFilter<T> {
+pub trait BaluFilter<T> where T: Hash {
     fn insert(&mut self, item: &T) -> bool;
     fn check(&self, item: &T) -> bool;
 }
@@ -18,7 +19,7 @@ impl AtomicFilter {
     }
 }
 
-impl<T> BaluFilter<T> for AtomicFilter {
+impl<T: Hash> BaluFilter<T> for AtomicFilter {
     fn insert(&mut self, item: &T) -> bool {
         false
     }
