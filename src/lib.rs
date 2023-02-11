@@ -1,9 +1,8 @@
 use std::sync::{atomic::AtomicU64, Arc};
 
-pub trait BaluFilter {
-    type Item;
-    fn insert(&mut self, item: &Self::Item) -> bool;
-    fn check(&self, item: &Self::Item) -> bool;
+pub trait BaluFilter<T> {
+    fn insert(&mut self, item: &T) -> bool;
+    fn check(&self, item: &T) -> bool;
 }
 
 pub struct AtomicFilter {
@@ -19,7 +18,25 @@ impl AtomicFilter {
     }
 }
 
+impl<T> BaluFilter<T> for AtomicFilter {
+    fn insert(&mut self, item: &T) -> bool {
+        false
+    }
+
+    fn check(&self, item: &T) -> bool {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::{BaluFilter, AtomicFilter};
+
+    #[test]
+    fn test_simple_insert() {
+        let mut filter = AtomicFilter::new();
+        assert_eq!(true, filter.insert(&"tchan"));
+        assert_eq!(false, filter.insert(&"tchan"));
+    }
 
 }
