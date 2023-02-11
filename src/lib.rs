@@ -14,11 +14,10 @@ pub struct AtomicFilter {
     contents: Arc<[AtomicU64; 32]>,
 }
 
-impl AtomicFilter {
-    pub fn new() -> Self {
-        const SLOT: AtomicU64 = AtomicU64::new(0);
+impl Default for AtomicFilter {
+    fn default() -> Self {
         AtomicFilter {
-            contents: Arc::new([SLOT; 32]),
+            contents: Arc::new(std::array::from_fn(|_| AtomicU64::new(0))),
         }
     }
 }
@@ -55,7 +54,7 @@ mod tests {
 
     #[test]
     fn test_simple_insert() {
-        let filter = AtomicFilter::new();
+        let filter = AtomicFilter::default();
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.insert(&"tchan"));
         assert_eq!(false, filter.insert(&"molejo"));
@@ -64,7 +63,7 @@ mod tests {
 
     #[test]
     fn test_insert_check() {
-        let filter = AtomicFilter::new();
+        let filter = AtomicFilter::default();
         assert_eq!(false, filter.check(&"tchan"));
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.check(&"tchan"));
