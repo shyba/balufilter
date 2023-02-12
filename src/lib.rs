@@ -156,13 +156,12 @@ mod tests {
                 thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             });
         }
-        while spinlock.load(std::sync::atomic::Ordering::SeqCst) != 0 {
-            hint::spin_loop();
-        }
-
         let local_filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::default();
         for value in dataset.iter() {
             local_filter.insert(&value);
+        }
+        while spinlock.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            hint::spin_loop();
         }
         assert!(
             parallel_filter.bytes() == local_filter.bytes(),
@@ -203,8 +202,6 @@ mod tests {
                         }
                     }
                     let mut found = false;
-                    let has_things = thread_filter.bytes().iter().any(|b| *b > 0);
-                    dbg!(has_things);
                     for element in thread_dataset.iter() {
                         if !thread_filter.check(&element) {
                             found = true;
@@ -212,7 +209,6 @@ mod tests {
                     }
                     running = found;
                 }
-                println!("READER FINISHED");
                 thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             });
         }
@@ -226,18 +222,18 @@ mod tests {
                         thread_filter.insert(&value);
                     }
                 }
-                println!("WRITER {} FINISHED", thread_index);
                 thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             });
         }
-        while spinlock.load(std::sync::atomic::Ordering::SeqCst) != 0 {
-            hint::spin_loop();
-        }
-
         let local_filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::default();
         for value in dataset.iter() {
             local_filter.insert(&value);
         }
+
+        while spinlock.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            hint::spin_loop();
+        }
+
         assert!(
             parallel_filter.bytes() == local_filter.bytes(),
             "filters mismatch"
