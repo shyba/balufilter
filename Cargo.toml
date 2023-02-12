@@ -9,6 +9,7 @@ edition = "2021"
 
 [dev-dependencies]
 criterion = "0.3"
+bloomfilter = "1.0.9"
 
 [[bench]]
 name = "simple_benchmark"
