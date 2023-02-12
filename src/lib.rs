@@ -24,33 +24,35 @@ impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
     }
 }
 
-impl<T: Hash, const N: usize, const K: usize> BaluFilter<T, N, K> for AtomicFilter<N, K> {
-    fn insert(&self, item: &T) -> bool {
+impl<const N: usize, const K: usize> AtomicFilter<N, K> {
+    #[inline(always)]
+    fn operation<T: Hash, const WRITE: bool>(&self, item: &T) -> bool {
         let mut hasher = DefaultHasher::new();
         let mut was_there = true;
         for _ in 0..K {
             item.hash(&mut hasher);
             let bit_index = hasher.finish() % 64;
             let shift = 1 << bit_index;
-            let prev = self.contents[(bit_index % N as u64) as usize]
-                .fetch_or(shift, std::sync::atomic::Ordering::SeqCst);
+            let prev = if WRITE {
+                self.contents[(bit_index % N as u64) as usize]
+                    .fetch_or(shift, std::sync::atomic::Ordering::SeqCst)
+            } else {
+                self.contents[(bit_index % N as u64) as usize]
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            };
             was_there &= (prev & shift) == shift;
         }
         was_there
     }
+}
+
+impl<T: Hash, const N: usize, const K: usize> BaluFilter<T, N, K> for AtomicFilter<N, K> {
+    fn insert(&self, item: &T) -> bool {
+        self.operation::<T, true>(item)
+    }
 
     fn check(&self, item: &T) -> bool {
-        let mut hasher = DefaultHasher::new();
-        let mut was_there = true;
-        for _ in 0..K {
-            item.hash(&mut hasher);
-            let bit_index = hasher.finish() % 64;
-            let shift = 1 << bit_index;
-            let prev = self.contents[(bit_index % N as u64) as usize]
-                .load(std::sync::atomic::Ordering::Relaxed);
-            was_there &= (prev & shift) == shift;
-        }
-        was_there
+        self.operation::<T, false>(item)
     }
 }
 
