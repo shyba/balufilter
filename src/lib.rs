@@ -29,11 +29,9 @@ impl<const N: usize, const K: usize> AtomicFilter<N, K> {
         let mut was_there = true;
         item.hash(&mut hasher);
         let mut hash = hasher.finish();
-        let multiplier = hash >> 32;
-        let mask = N as u64 - 1;
-        for round in 0..K {
+        for _ in 0..K {
             let shift = 1 << (hash & 0x7);
-            let byte_index = ((hash >> 8) & mask) as usize;
+            let byte_index = hash as usize % N;
             let prev = if WRITE {
                 self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::SeqCst)
             } else {
@@ -43,7 +41,9 @@ impl<const N: usize, const K: usize> AtomicFilter<N, K> {
             if !was_there && !WRITE {
                 return false;
             }
-            hash = hash.wrapping_add(round as u64).wrapping_mul(multiplier);
+            //hash = hash.wrapping_add(round as u64).wrapping_mul(multiplier);
+            item.hash(&mut hasher);
+            hash = hasher.finish();
         }
         was_there
     }
@@ -91,11 +91,34 @@ mod tests {
 
     #[test]
     fn test_very_large_filter_insert_does_not_blow_stack() {
-        let filter: AtomicFilter<1_000_000, 50> = AtomicFilter::default();
-        assert_eq!(false, filter.insert(&"tchan"));
-        assert_eq!(true, filter.insert(&"tchan"));
-        assert_eq!(false, filter.insert(&"molejo"));
-        assert_eq!(true, filter.insert(&"molejo"));
+        let dataset = Arc::new(simple_sample_from_seed("parallel", 1_000_000));
+        let inverse_dataset = Arc::new(sample_from_seed_excluding("lellarap", 1_000_000, &dataset));
+        const BYTES_SIZE: usize = 33_547_705 / 8;
+        let filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::default();
+        dbg!(filter.bytes().len());
+        for value in dataset.iter() {
+            assert!(!filter.check(value));
+        }
+        for value in dataset.iter() {
+            filter.insert(value);
+        }
+        for value in dataset.iter() {
+            assert!(filter.check(value));
+        }
+        let mut p = 0.0f64;
+        for value in inverse_dataset.iter() {
+            if filter.check(value) {
+                p += 1.0f64;
+            }
+        }
+        p /= inverse_dataset.len() as f64;
+        assert!(p < 0.0001f64 as f64, "P = {} > 0.0001", p);
+
+        for value in dataset.iter() {
+            if !filter.check(value) {
+                panic!("noo");
+            }
+        }
     }
 
     #[test]
@@ -130,6 +153,80 @@ mod tests {
                         thread_filter.insert(&value);
                     }
                 }
+                thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+        while spinlock.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            hint::spin_loop();
+        }
+
+        let local_filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::default();
+        for value in dataset.iter() {
+            local_filter.insert(&value);
+        }
+        assert!(
+            parallel_filter.bytes() == local_filter.bytes(),
+            "filters mismatch"
+        );
+    }
+
+    #[test]
+    fn test_paralell_read_while_writing() {
+        // Given:
+        // dataset = data that will be added to the bloom filter
+        // inverse_dataset = data that should not match
+        // Goal:
+        // Writers: Each writer will write a shard (1/THREADS) of the matching dataset
+        // Readers: will process the whole inverse dataset ensuring the inverse never matches until the matching dataset matches entirely
+        let dataset = Arc::new(simple_sample_from_seed("parallel", 1_000_000));
+        let inverse_dataset = Arc::new(sample_from_seed_excluding("lellarap", 1_000_000, &dataset));
+        const READERS: u8 = 2;
+        const WRITERS: u8 = 2;
+        const THREADS: u8 = READERS + WRITERS;
+        let spinlock = Arc::new(AtomicU8::new(THREADS));
+
+        const BYTES_SIZE: usize = 33_547_705 / 8;
+        let parallel_filter: Arc<AtomicFilter<BYTES_SIZE, 23>> = Arc::new(AtomicFilter::default());
+        // Readers start first as they won't leave until things match, so they can wait for writers
+        for _ in 0..READERS {
+            let thread_spinlock = Arc::clone(&spinlock);
+            let thread_filter = Arc::clone(&parallel_filter);
+            let thread_dataset = Arc::clone(&dataset);
+            let thread_inverse_dataset = Arc::clone(&inverse_dataset);
+            std::thread::spawn(move || {
+                let mut running = true;
+                while running {
+                    for element in thread_inverse_dataset.iter() {
+                        if thread_filter.check(&element) {
+                            thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                            panic!("Hit an element from the inverse dataset")
+                        }
+                    }
+                    let mut found = false;
+                    let has_things = thread_filter.bytes().iter().any(|b| *b > 0);
+                    dbg!(has_things);
+                    for element in thread_dataset.iter() {
+                        if !thread_filter.check(&element) {
+                            found = true;
+                        }
+                    }
+                    running = found;
+                }
+                println!("READER FINISHED");
+                thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+        for thread_index in 0..WRITERS {
+            let thread_spinlock = Arc::clone(&spinlock);
+            let thread_filter = Arc::clone(&parallel_filter);
+            let thread_dataset = Arc::clone(&dataset);
+            std::thread::spawn(move || {
+                for (index, value) in thread_dataset.iter().enumerate() {
+                    if index % WRITERS as usize == thread_index as usize {
+                        thread_filter.insert(&value);
+                    }
+                }
+                println!("WRITER {} FINISHED", thread_index);
                 thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             });
         }
