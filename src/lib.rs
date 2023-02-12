@@ -11,13 +11,13 @@ where
 }
 
 pub struct AtomicFilter<const N: usize, const K: usize> {
-    contents: Arc<[AtomicU8]>,
+    contents: Arc<Vec<AtomicU8>>,
 }
 
 impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
     fn default() -> Self {
         AtomicFilter {
-            contents: Arc::new(std::array::from_fn::<AtomicU8, N, _>(|_| AtomicU8::new(0))),
+            contents: Arc::new(Vec::from_iter((0..N).into_iter().map(|_| AtomicU8::new(0)))),
         }
     }
 }
@@ -68,6 +68,15 @@ mod tests {
     #[test]
     fn test_simple_insert() {
         let filter: AtomicFilter<320, 50> = AtomicFilter::default();
+        assert_eq!(false, filter.insert(&"tchan"));
+        assert_eq!(true, filter.insert(&"tchan"));
+        assert_eq!(false, filter.insert(&"molejo"));
+        assert_eq!(true, filter.insert(&"molejo"));
+    }
+
+    #[test]
+    fn test_very_large_filter_insert_does_not_blow_stack() {
+        let filter: AtomicFilter<1_000_000, 50> = AtomicFilter::default();
         assert_eq!(false, filter.insert(&"tchan"));
         assert_eq!(true, filter.insert(&"tchan"));
         assert_eq!(false, filter.insert(&"molejo"));
