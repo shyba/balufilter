@@ -16,8 +16,9 @@ pub struct AtomicFilter<const N: usize, const K: usize> {
 
 impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
     fn default() -> Self {
+
         AtomicFilter {
-            contents: Vec::from_iter((0..N).into_iter().map(|_| AtomicU8::new(0))),
+            contents: std::iter::repeat_with(|| AtomicU8::new(0)).take(N).collect()
         }
     }
 }
