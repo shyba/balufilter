@@ -29,7 +29,8 @@ impl<const N: usize, const K: usize> AtomicFilter<N, K> {
         let mut was_there = true;
         item.hash(&mut hasher);
         let mut hash = hasher.finish();
-        for _ in 0..K {
+        let multiplier = hash >> 32;
+        for round in 0..K {
             let shift = 1 << (hash & 0x7);
             let byte_index = hash as usize % N;
             let prev = if WRITE {
@@ -41,9 +42,7 @@ impl<const N: usize, const K: usize> AtomicFilter<N, K> {
             if !was_there && !WRITE {
                 return false;
             }
-            //hash = hash.wrapping_add(round as u64).wrapping_mul(multiplier);
-            item.hash(&mut hasher);
-            hash = hasher.finish();
+            hash ^= hash.wrapping_add(round as u64).wrapping_mul(multiplier);
         }
         was_there
     }
