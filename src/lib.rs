@@ -48,7 +48,7 @@ impl<T: Hash, const N: usize, const K: usize> BaluFilter<T, N, K> for AtomicFilt
             let shift = 1 << bit_index;
             let prev = self.contents[(bit_index % N as u64) as usize]
                 .load(std::sync::atomic::Ordering::Relaxed);
-            was_there &= (prev & shift) != 0;
+            was_there &= (prev & shift) == shift;
         }
         was_there
     }
