@@ -1,4 +1,7 @@
-use std::{collections::HashSet, hash::{Hash, Hasher}};
+use std::{
+    collections::HashSet,
+    hash::{Hash, Hasher},
+};
 
 use balufilter::{AtomicFilter, BaluFilter};
 use bloomfilter::Bloom;
@@ -8,7 +11,11 @@ pub fn simple_sample_from_seed(seed: &str, size: usize) -> HashSet<String> {
     sample_from_seed_excluding(seed, size, &HashSet::new())
 }
 
-pub fn sample_from_seed_excluding(seed: &str, size: usize, exclude: &HashSet<String>) -> HashSet<String> {
+pub fn sample_from_seed_excluding(
+    seed: &str,
+    size: usize,
+    exclude: &HashSet<String>,
+) -> HashSet<String> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     seed.hash(&mut hasher);
     let mut set = HashSet::new();
@@ -45,7 +52,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     const BYTES_SIZE: usize = 33_547_705 / 8;
     let filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::default();
-    c.bench_function("insert", |b| b.iter(|| filter.insert(&black_box(cycle.next().unwrap()))));
+    c.bench_function("insert", |b| {
+        b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
+    });
     c.bench_function("check true", |b| {
         b.iter(|| filter.check(&black_box(cycle.next().unwrap())))
     });
@@ -53,9 +62,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
     });
 
-
     let mut bloomfilter = Bloom::new_for_fp_rate_with_seed(1_000_000, 0.0000001, &[0; 32]);
-    println!("k: {}, m: {}", bloomfilter.number_of_hash_functions(), bloomfilter.number_of_bits());
+    println!(
+        "k: {}, m: {}",
+        bloomfilter.number_of_hash_functions(),
+        bloomfilter.number_of_bits()
+    );
     c.bench_function("bloomfilter insert", |b| {
         b.iter(|| bloomfilter.set(black_box(cycle.next().unwrap())))
     });
