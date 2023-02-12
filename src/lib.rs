@@ -16,9 +16,10 @@ pub struct AtomicFilter<const N: usize, const K: usize> {
 
 impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
     fn default() -> Self {
-
         AtomicFilter {
-            contents: std::iter::repeat_with(|| AtomicU8::new(0)).take(N).collect()
+            contents: std::iter::repeat_with(|| AtomicU8::new(0))
+                .take(N)
+                .collect(),
         }
     }
 }

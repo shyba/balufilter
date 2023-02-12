@@ -62,7 +62,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
     });
 
-    let mut bloomfilter = Bloom::new_for_fp_rate_with_seed(1_000_000, 0.0000001, &[0; 32]);
+    let mut bloomfilter = Bloom::new_for_fp_rate(dataset.len(), 0.0000001);
     println!(
         "k: {}, m: {}",
         bloomfilter.number_of_hash_functions(),
