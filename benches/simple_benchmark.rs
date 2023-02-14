@@ -32,22 +32,18 @@ pub fn sample_from_seed_excluding(
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let dataset = simple_sample_from_seed("batata is potato", 1_000_000);
-    let inverse_dataset = sample_from_seed_excluding("potato is batata", 1_000_000, &dataset);
-    let dataset = Vec::from_iter(dataset.into_iter());
-    let inverse_dataset = Vec::from_iter(inverse_dataset.into_iter());
-    let mut cycle = dataset.iter().cycle();
-    let mut inverse_cycle = inverse_dataset.iter().cycle();
+    let mut cycle = (0..1_000_000).cycle();
+    let mut inverse_cycle = (10_000_000..11_000_000).cycle();
 
-    let mut table: HashSet<&String> = HashSet::default();
+    let mut table: HashSet<i32> = HashSet::default();
     c.bench_function("hashset insert", |b| {
         b.iter(|| table.insert(black_box(cycle.next().unwrap())))
     });
     c.bench_function("hashset check true", |b| {
-        b.iter(|| table.contains(black_box(cycle.next().unwrap())))
+        b.iter(|| table.contains(black_box(&cycle.next().unwrap())))
     });
     c.bench_function("hashset check false", |b| {
-        b.iter(|| table.contains(black_box(inverse_cycle.next().unwrap())))
+        b.iter(|| table.contains(black_box(&inverse_cycle.next().unwrap())))
     });
 
     const BYTES_SIZE: usize = 33_547_705 / 8;
@@ -62,20 +58,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
     });
 
-    let mut bloomfilter = Bloom::new_for_fp_rate(dataset.len(), 0.0000001);
+    let mut bloomfilter = Bloom::new_for_fp_rate(1_000_000, 0.0000001);
     println!(
         "k: {}, m: {}",
         bloomfilter.number_of_hash_functions(),
         bloomfilter.number_of_bits()
     );
     c.bench_function("bloomfilter insert", |b| {
-        b.iter(|| bloomfilter.set(black_box(cycle.next().unwrap())))
+        b.iter(|| bloomfilter.set(black_box(&cycle.next().unwrap())))
     });
     c.bench_function("bloomfilter check true", |b| {
-        b.iter(|| bloomfilter.check(black_box(cycle.next().unwrap())))
+        b.iter(|| bloomfilter.check(black_box(&cycle.next().unwrap())))
     });
     c.bench_function("bloomfilter check false", |b| {
-        b.iter(|| bloomfilter.check(black_box(inverse_cycle.next().unwrap())))
+        b.iter(|| bloomfilter.check(black_box(&inverse_cycle.next().unwrap())))
     });
 }
 
