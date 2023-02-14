@@ -11,6 +11,7 @@ ahash = "0.8.3"
 [dev-dependencies]
 criterion = "0.3"
 bloomfilter = "1.0.9"
+cuckoofilter = "0.5.0"
 
 [[bench]]
 name = "simple_benchmark"

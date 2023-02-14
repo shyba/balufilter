@@ -35,15 +35,15 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut cycle = (0..1_000_000).cycle();
     let mut inverse_cycle = (10_000_000..11_000_000).cycle();
 
-    let mut table: HashSet<i32> = HashSet::default();
-    c.bench_function("hashset insert", |b| {
-        b.iter(|| table.insert(black_box(cycle.next().unwrap())))
+    let mut filter = cuckoofilter::CuckooFilter::new();
+    c.bench_function("cuckoo insert", |b| {
+        b.iter(|| filter.add(black_box(&cycle.next().unwrap())))
     });
-    c.bench_function("hashset check true", |b| {
-        b.iter(|| table.contains(black_box(&cycle.next().unwrap())))
+    c.bench_function("cuckoo check true", |b| {
+        b.iter(|| filter.contains(black_box(&cycle.next().unwrap())))
     });
-    c.bench_function("hashset check false", |b| {
-        b.iter(|| table.contains(black_box(&inverse_cycle.next().unwrap())))
+    c.bench_function("cuckoo check false", |b| {
+        b.iter(|| filter.contains(black_box(&inverse_cycle.next().unwrap())))
     });
 
     const BYTES_SIZE: usize = 33_547_705 / 8;
