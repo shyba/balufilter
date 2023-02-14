@@ -1,5 +1,5 @@
-use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hash, Hasher};
+use ahash::RandomState;
 use std::sync::atomic::AtomicU8;
 
 pub trait BaluFilter<T, const N: usize, const K: usize>
