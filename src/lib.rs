@@ -65,11 +65,10 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
     fn check_round<const WRITE: bool>(&self, hash: u32) -> bool {
         let shift = 1 << (hash & 0x7);
         let byte_index = Self::modulo(hash, N as u32) as usize;
-        let prev = if WRITE {
-            self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::Relaxed)
-        } else {
-            self.contents[byte_index].load(std::sync::atomic::Ordering::Relaxed)
-        };
+        let prev = self.contents[byte_index].load(std::sync::atomic::Ordering::Relaxed);
+        if WRITE {
+            self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::Relaxed);
+        }
         (prev & shift) == shift
     }
 
