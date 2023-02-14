@@ -37,6 +37,11 @@ impl<const N: usize, const K: usize> Default for AtomicFilter<N, K, RandomState>
 }
 
 impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
+    #[inline]
+    fn modulo(value: u32, n: u32) -> u32 {
+        // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+        (((value as u64) * (n as u64)) >> 32) as u32
+    }
     #[inline(always)]
     fn operation<T: Hash, const WRITE: bool>(&self, item: &T) -> bool {
         let mut hasher = self.hash_builder.build_hasher();
@@ -45,7 +50,7 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
         let mut hash = hasher.finish();
         for round in 0..K {
             let shift = 1 << (hash & 0x7);
-            let byte_index = hash as usize % N;
+            let byte_index = Self::modulo(hash as u32, N as u32) as usize;
             let prev = if WRITE {
                 self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::SeqCst)
             } else {
