@@ -1,5 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::sync::atomic::AtomicU8;
 
 pub trait BaluFilter<T, const N: usize, const K: usize>
@@ -10,24 +10,26 @@ where
     fn check(&self, item: &T) -> bool;
 }
 
-pub struct AtomicFilter<const N: usize, const K: usize> {
+pub struct AtomicFilter<const N: usize, const K: usize, B = RandomState> {
     contents: Vec<AtomicU8>,
+    hash_builder: B,
 }
 
-impl<const N: usize, const K: usize> Default for AtomicFilter<N, K> {
+impl<const N: usize, const K: usize> Default for AtomicFilter<N, K, RandomState> {
     fn default() -> Self {
         AtomicFilter {
             contents: std::iter::repeat_with(|| AtomicU8::new(0))
                 .take(N)
                 .collect(),
+            hash_builder: RandomState::new(),
         }
     }
 }
 
-impl<const N: usize, const K: usize> AtomicFilter<N, K> {
+impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
     #[inline(always)]
     fn operation<T: Hash, const WRITE: bool>(&self, item: &T) -> bool {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = self.hash_builder.build_hasher();
         let mut was_there = true;
         item.hash(&mut hasher);
         let mut hash = hasher.finish();
@@ -58,7 +60,9 @@ impl<const N: usize, const K: usize> AtomicFilter<N, K> {
     }
 }
 
-impl<T: Hash, const N: usize, const K: usize> BaluFilter<T, N, K> for AtomicFilter<N, K> {
+impl<T: Hash, const N: usize, const K: usize, B: BuildHasher> BaluFilter<T, N, K>
+    for AtomicFilter<N, K, B>
+{
     #[inline]
     fn insert(&self, item: &T) -> bool {
         self.operation::<T, true>(item)
