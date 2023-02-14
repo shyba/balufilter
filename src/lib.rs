@@ -47,23 +47,30 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
         let mut hasher = self.hash_builder.build_hasher();
         let mut was_there = true;
         item.hash(&mut hasher);
-        let mut hash = hasher.finish();
-        for round in 0..K {
-            let shift = 1 << (hash & 0x7);
-            let byte_index = Self::modulo(hash as u32, N as u32) as usize;
-            let prev = if WRITE {
-                self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::SeqCst)
-            } else {
-                self.contents[byte_index].load(std::sync::atomic::Ordering::SeqCst)
-            };
-            was_there &= (prev & shift) == shift;
+        for _ in 0..(K / 2) {
+            hasher.write_u8(0);
+            let hash = hasher.finish();
+            was_there &= self.check_round::<WRITE>(hash as u32);
             if !was_there && !WRITE {
                 return false;
             }
-            hasher.write_u64(hash.wrapping_add(round as u64));
-            hash = hasher.finish();
+            was_there &= self.check_round::<WRITE>((hash >> 32) as u32);
+            if !was_there && !WRITE {
+                return false;
+            }
         }
         was_there
+    }
+    #[inline(always)]
+    fn check_round<const WRITE: bool>(&self, hash: u32) -> bool {
+        let shift = 1 << (hash & 0x7);
+        let byte_index = Self::modulo(hash, N as u32) as usize;
+        let prev = if WRITE {
+            self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::SeqCst)
+        } else {
+            self.contents[byte_index].load(std::sync::atomic::Ordering::SeqCst)
+        };
+        (prev & shift) == shift
     }
 
     pub fn bytes(&self) -> Vec<u8> {
