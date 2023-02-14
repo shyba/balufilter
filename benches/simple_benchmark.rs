@@ -1,35 +1,6 @@
-use std::{
-    collections::HashSet,
-    hash::{Hash, Hasher},
-};
-
 use balufilter::{AtomicFilter, BaluFilter};
 use bloomfilter::Bloom;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-pub fn simple_sample_from_seed(seed: &str, size: usize) -> HashSet<String> {
-    sample_from_seed_excluding(seed, size, &HashSet::new())
-}
-
-pub fn sample_from_seed_excluding(
-    seed: &str,
-    size: usize,
-    exclude: &HashSet<String>,
-) -> HashSet<String> {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    seed.hash(&mut hasher);
-    let mut set = HashSet::new();
-    let mut index = 0;
-    while set.len() < size {
-        index.hash(&mut hasher);
-        let value = format!("{:x}", hasher.finish());
-        if !exclude.contains(&value) {
-            set.insert(format!("{:x}", hasher.finish()));
-        }
-        index += 1;
-    }
-    set
-}
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut cycle = (0..1_000_000).cycle();
