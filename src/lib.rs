@@ -47,9 +47,8 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
         let mut hasher = self.hash_builder.build_hasher();
         let mut was_there = true;
         item.hash(&mut hasher);
-        for _ in 0..(K / 2) {
-            hasher.write_u8(0);
-            let hash = hasher.finish();
+        let mut hash = hasher.finish();
+        for round in 0..(K / 2) {
             was_there &= self.check_round::<WRITE>(hash as u32);
             if !was_there && !WRITE {
                 return false;
@@ -58,6 +57,7 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
             if !was_there && !WRITE {
                 return false;
             }
+            hash = hash.wrapping_add(1 + hash.rotate_left(round as u32 + 1));
         }
         was_there
     }
@@ -66,9 +66,9 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
         let shift = 1 << (hash & 0x7);
         let byte_index = Self::modulo(hash, N as u32) as usize;
         let prev = if WRITE {
-            self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::SeqCst)
+            self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::Relaxed)
         } else {
-            self.contents[byte_index].load(std::sync::atomic::Ordering::SeqCst)
+            self.contents[byte_index].load(std::sync::atomic::Ordering::Relaxed)
         };
         (prev & shift) == shift
     }
@@ -98,10 +98,7 @@ impl<T: Hash, const N: usize, const K: usize, B: BuildHasher> BaluFilter<T, N, K
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        hint,
-        sync::{atomic::AtomicU8, Arc},
-    };
+    use std::sync::Arc;
 
     use crate::{AtomicFilter, BaluFilter};
 
@@ -129,13 +126,14 @@ mod tests {
             assert!(filter.check(&value));
         }
         let mut p = 0.0f64;
-        for value in 10_000_000..11_000_000 {
+        for value in 1_000_000..101_000_000 {
             if filter.check(&value) {
                 p += 1.0f64;
             }
         }
-        p /= 1_000_000f64;
-        assert!(p < 0.0001f64 as f64, "P = {} > 0.0001", p);
+        p /= 100_000_000f64;
+        assert!(p < 0.0000002f64 as f64, "P = {} > 0.0000002", p);
+        println!("P: {}", p);
 
         for value in 0..1_000_000 {
             assert!(filter.check(&value));
@@ -159,29 +157,27 @@ mod tests {
     #[test]
     fn test_paralell_write() {
         const THREADS: u8 = 8u8;
-        let spinlock = Arc::new(AtomicU8::new(THREADS));
 
         const BYTES_SIZE: usize = 33_547_705 / 8;
         let parallel_filter: Arc<AtomicFilter<BYTES_SIZE, 23>> =
             Arc::new(AtomicFilter::with_seed(42));
+        let mut handles = vec![];
         for thread_index in 0..THREADS {
-            let thread_spinlock = Arc::clone(&spinlock);
             let thread_filter = Arc::clone(&parallel_filter);
-            std::thread::spawn(move || {
+            handles.push(std::thread::spawn(move || {
                 for index in 0..1_000_000 {
                     if index % THREADS as usize == thread_index as usize {
                         thread_filter.insert(&index);
                     }
                 }
-                thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-            });
+            }));
         }
         let local_filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::with_seed(42);
         for value in 0..1_000_000 {
             local_filter.insert(&value);
         }
-        while spinlock.load(std::sync::atomic::Ordering::SeqCst) != 0 {
-            hint::spin_loop();
+        for handle in handles {
+            handle.join().unwrap();
         }
         assert!(
             parallel_filter.bytes() == local_filter.bytes(),
@@ -199,25 +195,25 @@ mod tests {
         // Readers: will process the whole inverse dataset ensuring the inverse never matches until the matching dataset matches entirely
         const READERS: u8 = 2;
         const WRITERS: u8 = 2;
-        const THREADS: u8 = READERS + WRITERS;
-        let spinlock = Arc::new(AtomicU8::new(THREADS));
 
         const BYTES_SIZE: usize = 33_547_705 / 8;
         let parallel_filter: Arc<AtomicFilter<BYTES_SIZE, 23>> =
             Arc::new(AtomicFilter::with_seed(42));
         // Readers start first as they won't leave until things match, so they can wait for writers
+        let mut handles = vec![];
         for _ in 0..READERS {
-            let thread_spinlock = Arc::clone(&spinlock);
             let thread_filter = Arc::clone(&parallel_filter);
-            std::thread::spawn(move || {
+            handles.push(std::thread::spawn(move || {
                 let mut running = true;
                 while running {
+                    let mut p = 0f64;
                     for element in 10_000_000..11_000_000 {
                         if thread_filter.check(&element) {
-                            thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                            panic!("Hit an element from the inverse dataset")
+                            p += 1f64;
                         }
                     }
+                    p /= 1_000_000f64;
+                    assert!(p < 0.000002f64 as f64, "P = {} > 0.000002", p);
                     let mut found = false;
                     for element in 0..1_000_000 {
                         if !thread_filter.check(&element) {
@@ -226,28 +222,25 @@ mod tests {
                     }
                     running = found;
                 }
-                thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-            });
+            }));
         }
         for thread_index in 0..WRITERS {
-            let thread_spinlock = Arc::clone(&spinlock);
             let thread_filter = Arc::clone(&parallel_filter);
-            std::thread::spawn(move || {
+            handles.push(std::thread::spawn(move || {
                 for index in 0..1_000_000 {
                     if index % WRITERS as usize == thread_index as usize {
                         thread_filter.insert(&index);
                     }
                 }
-                thread_spinlock.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-            });
+            }));
         }
         let local_filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::with_seed(42);
         for value in 0..1_000_000 {
             local_filter.insert(&value);
         }
 
-        while spinlock.load(std::sync::atomic::Ordering::SeqCst) != 0 {
-            hint::spin_loop();
+        for handle in handles {
+            handle.join().unwrap();
         }
 
         assert!(
