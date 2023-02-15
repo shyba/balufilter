@@ -6,9 +6,14 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ahash = "0.8.3"
+rand = {version = "0.8.5", optional = true}
+
+[features]
+default = ["random"]
+random = ["rand"]
 
 [dev-dependencies]
+ahash = "0.8.3"
 criterion = "0.3"
 bloomfilter = "1.0.9"
 cuckoofilter = "0.5.0"

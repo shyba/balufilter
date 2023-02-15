@@ -11,7 +11,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut inverse_cycle = (10_000_000..11_000_000).cycle();
 
     const BYTES_SIZE: usize = 33_547_705 / 8;
-    let filter: AtomicFilter<BYTES_SIZE, 23, NoHasher> = AtomicFilter::with_state(NoHasher::new());
+    let filter: AtomicFilter<BYTES_SIZE, 23, NoHasher> = AtomicFilter::with_state_and_seed(NoHasher::new(), 42);
     c.bench_function("nohash insert", |b| {
         b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
     });
@@ -32,7 +32,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
     });
 
-    let filter: AtomicFilter<BYTES_SIZE, 23, HighwayBuildHasher> = AtomicFilter::with_state(highway::HighwayBuildHasher::default());
+    let filter: AtomicFilter<BYTES_SIZE, 23, HighwayBuildHasher> = AtomicFilter::with_state_and_seed(highway::HighwayBuildHasher::default(), 42);
     c.bench_function("highway insert", |b| {
         b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
     });

@@ -1,6 +1,9 @@
-use ahash::RandomState;
+use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::sync::atomic::AtomicU8;
+
+#[cfg(feature = "random")]
+use rand::random;
 
 pub trait BaluFilter<T, const N: usize, const K: usize>
 where
@@ -13,28 +16,31 @@ where
 pub struct AtomicFilter<const N: usize, const K: usize, B: BuildHasher = RandomState> {
     contents: Vec<AtomicU8>,
     hash_builder: B,
+    seed: u64
 }
 
 impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
-    pub fn with_state(state: B) -> Self {
+    pub fn with_state_and_seed(state: B, seed: u64) -> Self {
         AtomicFilter {
             contents: std::iter::repeat_with(|| AtomicU8::new(0))
                 .take(N)
                 .collect(),
             hash_builder: state,
+            seed: seed
         }
     }
 }
 
 impl<const N: usize, const K: usize> AtomicFilter<N, K, RandomState> {
-    fn with_seed(seed: usize) -> Self {
-        AtomicFilter::with_state(RandomState::with_seed(seed))
+    fn with_seed(seed: u64) -> Self {
+        AtomicFilter::with_state_and_seed(RandomState::new(), seed)
     }
 }
 
 impl<const N: usize, const K: usize> Default for AtomicFilter<N, K, RandomState> {
+    #[cfg(feature = "random")]
     fn default() -> Self {
-        AtomicFilter::with_state(RandomState::new())
+        AtomicFilter::with_seed(random())
     }
 }
 
@@ -49,15 +55,19 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
         let mut hasher = self.hash_builder.build_hasher();
         let mut was_there = true;
         item.hash(&mut hasher);
-        let mut hash = hasher.finish();
+        let mut hash = hasher.finish() ^ self.seed;
         for round in 0..(K / 2) {
-            was_there &= self.check_round::<WRITE>(hash as u32);
-            if !was_there && !WRITE {
-                return false;
+            if !self.check_round::<WRITE>(hash as u32){
+                was_there = false;
+                if !WRITE {
+                    return false;
+                }
             }
-            was_there &= self.check_round::<WRITE>((hash >> 32) as u32);
-            if !was_there && !WRITE {
-                return false;
+            if !self.check_round::<WRITE>((hash >> 32) as u32){
+                was_there = false;
+                if !WRITE {
+                    return false;
+                }
             }
             hash = hash.wrapping_add(1 + hash.rotate_left(round as u32 + 1));
         }
