@@ -1,4 +1,6 @@
 use ahash::RandomState;
+use bitvec::prelude::Msb0;
+use bitvec::vec::BitVec;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::sync::atomic::AtomicU8;
 
@@ -11,16 +13,14 @@ where
 }
 
 pub struct AtomicFilter<const N: usize, const K: usize, B: BuildHasher = RandomState> {
-    contents: Vec<AtomicU8>,
+    contents: BitVec<AtomicU8, Msb0>,
     hash_builder: B,
 }
 
 impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
     pub fn with_state(state: B) -> Self {
         AtomicFilter {
-            contents: std::iter::repeat_with(|| AtomicU8::new(0))
-                .take(N)
-                .collect(),
+            contents: BitVec::from_iter((0..N * 8).into_iter().map(|_| AtomicU8::new(0))),
             hash_builder: state,
         }
     }
@@ -39,7 +39,7 @@ impl<const N: usize, const K: usize> Default for AtomicFilter<N, K, RandomState>
 }
 
 impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
-    #[inline]
+    #[inline(always)]
     fn modulo(value: u32, n: u32) -> u32 {
         // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
         (((value as u64) * (n as u64)) >> 32) as u32
@@ -51,13 +51,17 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
         item.hash(&mut hasher);
         let mut hash = hasher.finish();
         for round in 0..(K / 2) {
-            was_there &= self.check_round::<WRITE>(hash as u32);
-            if !was_there && !WRITE {
-                return false;
+            if self.check_round::<WRITE>(hash as u32) {
+                was_there = false;
+                if !WRITE {
+                    return false;
+                }
             }
-            was_there &= self.check_round::<WRITE>((hash >> 32) as u32);
-            if !was_there && !WRITE {
-                return false;
+            if self.check_round::<WRITE>((hash >> 32) as u32) {
+                was_there = false;
+                if !WRITE {
+                    return false;
+                }
             }
             hash = hash.wrapping_add(1 + hash.rotate_left(round as u32 + 1));
         }
@@ -65,21 +69,17 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
     }
     #[inline(always)]
     fn check_round<const WRITE: bool>(&self, hash: u32) -> bool {
-        let shift = 1 << (hash & 0x7);
-        let byte_index = Self::modulo(hash, N as u32) as usize;
-        let prev = self.contents[byte_index].load(std::sync::atomic::Ordering::Relaxed);
+        //let index = Self::modulo(hash, self.contents.len() as u32) as usize;
+        let index = hash as usize % self.contents.len();
+        let prev = self.contents.get(index).unwrap() == false;
         if WRITE {
-            self.contents[byte_index].fetch_or(shift, std::sync::atomic::Ordering::Relaxed);
+            self.contents.set_aliased(index, true);
         }
-        (prev & shift) == shift
+        prev
     }
 
     pub fn bytes(&self) -> Vec<u8> {
-        Vec::from_iter(
-            self.contents
-                .iter()
-                .map(|v| v.load(std::sync::atomic::Ordering::SeqCst)),
-        )
+        Vec::from_iter(self.contents.to_bitvec().into_vec().iter().flat_map(|v| v.load(std::sync::atomic::Ordering::Relaxed).to_be_bytes()))
     }
 }
 
@@ -88,12 +88,34 @@ impl<T: Hash, const N: usize, const K: usize, B: BuildHasher> BaluFilter<T, N, K
 {
     #[inline]
     fn insert(&self, item: &T) -> bool {
-        self.operation::<T, true>(item)
+        let mut hasher = self.hash_builder.build_hasher();
+        item.hash(&mut hasher);
+        let mut hash = hasher.finish();
+        let mut found = true;
+        for round in 0..K {
+            let index0 = hash as usize % self.contents.len();
+            if self.contents.get(index0).unwrap() == false {
+                found = false;
+                self.contents.set_aliased(index0, true);
+            }
+            hash = hash.wrapping_add(1 + hash.rotate_left(round as u32 + 1));
+        }
+        return found;
     }
 
     #[inline]
     fn check(&self, item: &T) -> bool {
-        self.operation::<T, false>(item)
+        let mut hasher = self.hash_builder.build_hasher();
+        item.hash(&mut hasher);
+        let mut hash = hasher.finish();
+        for round in 0..K {
+            let index0 = hash as usize % self.contents.len();
+            if self.contents.get(index0).unwrap() == false {
+                return false
+            }
+            hash = hash.wrapping_add(1 + hash.rotate_left(round as u32 + 1));
+        }
+        return true;
     }
 }
 

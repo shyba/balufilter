@@ -8,6 +8,11 @@ edition = "2021"
 [dependencies]
 ahash = "0.8.3"
 
+[dependencies.bitvec]
+version = "1"
+default-features = false
+features = ["atomic", "alloc"]
+
 [dev-dependencies]
 criterion = "0.3"
 bloomfilter = "1.0.9"
