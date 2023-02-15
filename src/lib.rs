@@ -10,13 +10,13 @@ where
     fn check(&self, item: &T) -> bool;
 }
 
-pub struct AtomicFilter<const N: usize, const K: usize, B = RandomState> {
+pub struct AtomicFilter<const N: usize, const K: usize, B: BuildHasher = RandomState> {
     contents: Vec<AtomicU8>,
     hash_builder: B,
 }
 
-impl<const N: usize, const K: usize> AtomicFilter<N, K, RandomState> {
-    fn with_state(state: RandomState) -> Self {
+impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
+    pub fn with_state(state: B) -> Self {
         AtomicFilter {
             contents: std::iter::repeat_with(|| AtomicU8::new(0))
                 .take(N)
@@ -24,7 +24,9 @@ impl<const N: usize, const K: usize> AtomicFilter<N, K, RandomState> {
             hash_builder: state,
         }
     }
+}
 
+impl<const N: usize, const K: usize> AtomicFilter<N, K, RandomState> {
     fn with_seed(seed: usize) -> Self {
         AtomicFilter::with_state(RandomState::with_seed(seed))
     }

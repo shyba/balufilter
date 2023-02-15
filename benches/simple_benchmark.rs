@@ -2,6 +2,8 @@ use balufilter::{AtomicFilter, BaluFilter};
 use bloomfilter::Bloom;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+use highway::{self, HighwayBuildHasher};
+
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut cycle = (0..1_000_000).cycle();
     let mut inverse_cycle = (10_000_000..11_000_000).cycle();
@@ -15,6 +17,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| filter.check(&black_box(cycle.next().unwrap())))
     });
     c.bench_function("check false", |b| {
+        b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
+    });
+
+    let filter: AtomicFilter<BYTES_SIZE, 23, HighwayBuildHasher> = AtomicFilter::with_state(highway::HighwayBuildHasher::default());
+    c.bench_function("highway insert", |b| {
+        b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
+    });
+    c.bench_function("highway check true", |b| {
+        b.iter(|| filter.check(&black_box(cycle.next().unwrap())))
+    });
+    c.bench_function("highway check false", |b| {
         b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
     });
 

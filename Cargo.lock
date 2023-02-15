@@ -39,6 +39,7 @@ dependencies = [
  "bloomfilter",
  "criterion",
  "cuckoofilter",
+ "highway",
 ]
 
 [[package]]
@@ -280,6 +281,12 @@ checksum = "ee512640fe35acbfb4bb779db6f0d80704c2cacfa2e39b601ef3e3f47d1ae4c7"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "highway"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1489f81ead4b71a09ddeab6850c0356c0932587637d753f21ee1010ab875b013"
 
 [[package]]
 name = "itertools"
