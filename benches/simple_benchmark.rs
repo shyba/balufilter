@@ -1,3 +1,5 @@
+mod no_hash;
+use no_hash::NoHasher;
 use balufilter::{AtomicFilter, BaluFilter};
 use bloomfilter::Bloom;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -9,6 +11,16 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut inverse_cycle = (10_000_000..11_000_000).cycle();
 
     const BYTES_SIZE: usize = 33_547_705 / 8;
+    let filter: AtomicFilter<BYTES_SIZE, 23, NoHasher> = AtomicFilter::with_state(NoHasher::new());
+    c.bench_function("nohash insert", |b| {
+        b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
+    });
+    c.bench_function("nohash check true", |b| {
+        b.iter(|| filter.check(&black_box(cycle.next().unwrap())))
+    });
+    c.bench_function("nohash check false", |b| {
+        b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
+    });
     let filter: AtomicFilter<BYTES_SIZE, 23> = AtomicFilter::default();
     c.bench_function("insert", |b| {
         b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
