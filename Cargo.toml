@@ -7,10 +7,12 @@ edition = "2021"
 
 [dependencies]
 rand = {version = "0.8.5", optional = true}
+ahash = {version = "0.8.3", optional = true}
 
 [features]
-default = ["random"]
+default = ["random", "ahasher"]
 random = ["rand"]
+ahasher = ["ahash"]
 
 [dev-dependencies]
 ahash = "0.8.3"

@@ -1,7 +1,7 @@
-use std::hash::{Hasher, BuildHasher};
+use std::hash::{BuildHasher, Hasher};
 
 pub struct NoHasher {
-    state: u64
+    state: u64,
 }
 
 impl NoHasher {
