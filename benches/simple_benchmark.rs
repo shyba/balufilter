@@ -1,9 +1,9 @@
 mod no_hash;
-use std::hash::BuildHasher;
 use balufilter::{AtomicFilter, BaluFilter};
 use bloomfilter::Bloom;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use no_hash::NoHasher;
+use std::hash::BuildHasher;
 
 use ahash::RandomState;
 use highway::{self, HighwayBuildHasher};
@@ -34,7 +34,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("nohash check false", |b| {
         b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
     });
-    let filter: AtomicFilter<BYTES_SIZE, 23, FxBuilder> = AtomicFilter::with_state_and_seed(FxBuilder{}, 42);
+    let filter: AtomicFilter<BYTES_SIZE, 23, FxBuilder> =
+        AtomicFilter::with_state_and_seed(FxBuilder {}, 42);
     c.bench_function("fx insert", |b| {
         b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
     });
