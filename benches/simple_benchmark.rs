@@ -1,5 +1,5 @@
 mod no_hash;
-use balufilter::{AtomicFilter, BaluFilter};
+use balufilter::{blocking::BlockedAtomicFilter, AtomicFilter, BaluFilter};
 use bloomfilter::Bloom;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use no_hash::NoHasher;
@@ -23,6 +23,16 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut inverse_cycle = (10_000_000..11_000_000).cycle();
 
     const BITS_SIZE: usize = 33_547_705;
+    let filter: BlockedAtomicFilter<56_547_705, 24, RandomState> = BlockedAtomicFilter::default();
+    c.bench_function("register blocked insert", |b| {
+        b.iter(|| filter.insert(&black_box(cycle.next().unwrap())))
+    });
+    c.bench_function("register blocked check true", |b| {
+        b.iter(|| filter.check(&black_box(cycle.next().unwrap())))
+    });
+    c.bench_function("register blocked check false", |b| {
+        b.iter(|| filter.check(&black_box(inverse_cycle.next().unwrap())))
+    });
     let filter: AtomicFilter<BITS_SIZE, 23, NoHasher> =
         AtomicFilter::with_state_and_seed(NoHasher::new(), 42);
     c.bench_function("nohash insert", |b| {

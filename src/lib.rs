@@ -1,4 +1,5 @@
 #![no_std]
+pub mod blocking;
 
 use core as std;
 extern crate alloc;
