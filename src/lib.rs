@@ -19,19 +19,19 @@ where
     fn check(&self, item: &T) -> bool;
 }
 
-pub struct AtomicFilter<const N: usize, const K: usize, B: BuildHasher> {
+pub struct AtomicFilter<const M: usize, const K: usize, B: BuildHasher> {
     contents: Vec<AtomicU8>,
     hash_builder: B,
     seed: u64,
 }
 
-impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
+impl<const M: usize, const K: usize, B: BuildHasher> AtomicFilter<M, K, B> {
     pub fn with_state_and_seed(state: B, seed: u64) -> Self {
         let mut hasher = state.build_hasher();
         seed.hash(&mut hasher);
         AtomicFilter {
             contents: std::iter::repeat_with(|| AtomicU8::new(0))
-                .take(N)
+                .take(M / 8)
                 .collect(),
             hash_builder: state,
             seed: hasher.finish(),
@@ -40,24 +40,24 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
 }
 
 #[cfg(feature = "ahasher")]
-impl<const N: usize, const K: usize> AtomicFilter<N, K, RandomState> {
+impl<const M: usize, const K: usize> AtomicFilter<M, K, RandomState> {
     fn with_seed(seed: u64) -> Self {
         AtomicFilter::with_state_and_seed(RandomState::with_seed(seed as usize), seed)
     }
 }
 
 #[cfg(all(feature = "random", feature = "ahasher"))]
-impl<const N: usize, const K: usize> Default for AtomicFilter<N, K, RandomState> {
+impl<const M: usize, const K: usize> Default for AtomicFilter<M, K, RandomState> {
     fn default() -> Self {
         AtomicFilter::with_seed(random())
     }
 }
 
-impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
+impl<const M: usize, const K: usize, B: BuildHasher> AtomicFilter<M, K, B> {
     #[inline]
-    fn modulo(value: u32, n: u32) -> u32 {
+    fn byte_index(value: u32) -> usize {
         // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
-        (((value as u64) * (n as u64)) >> 32) as u32
+        (((value as u64) * ((M / 8) as u64)) >> 32) as usize
     }
     #[inline(always)]
     fn operation<T: Hash, const WRITE: bool>(&self, item: &T) -> bool {
@@ -79,7 +79,7 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
     #[inline(always)]
     fn check_round<const WRITE: bool>(&self, hash: u32, was_there: &mut bool) -> bool {
         let shift = 1 << (hash & 0x7);
-        let byte_index = Self::modulo(hash, N as u32) as usize;
+        let byte_index = Self::byte_index(hash);
         let prev = self.contents[byte_index].load(std::sync::atomic::Ordering::Relaxed);
         *was_there &= (prev & shift) == shift;
         if WRITE {
@@ -97,8 +97,8 @@ impl<const N: usize, const K: usize, B: BuildHasher> AtomicFilter<N, K, B> {
     }
 }
 
-impl<T: Hash, const N: usize, const K: usize, B: BuildHasher> BaluFilter<T, N, K>
-    for AtomicFilter<N, K, B>
+impl<T: Hash, const M: usize, const K: usize, B: BuildHasher> BaluFilter<T, M, K>
+    for AtomicFilter<M, K, B>
 {
     #[inline]
     fn insert(&self, item: &T) -> bool {
@@ -131,8 +131,7 @@ mod tests {
 
     #[test]
     fn test_very_large_filter_insert_does_not_blow_stack() {
-        const BYTES_SIZE: usize = 33_547_705 / 8;
-        let filter: AtomicFilter<BYTES_SIZE, 23, RandomState> = AtomicFilter::default();
+        let filter: AtomicFilter<33_547_705, 23, RandomState> = AtomicFilter::default();
         for value in 0..1_000_000 {
             assert!(!filter.check(&value));
         }
@@ -174,8 +173,8 @@ mod tests {
     fn test_paralell_write() {
         const THREADS: u8 = 8u8;
 
-        const BYTES_SIZE: usize = 33_547_705 / 8;
-        let parallel_filter: Arc<AtomicFilter<BYTES_SIZE, 23, RandomState>> =
+        const FILTER_SIZE: usize = 33_547_705;
+        let parallel_filter: Arc<AtomicFilter<FILTER_SIZE, 23, RandomState>> =
             Arc::new(AtomicFilter::with_seed(42));
         let mut handles = vec![];
         for thread_index in 0..THREADS {
@@ -188,7 +187,7 @@ mod tests {
                 }
             }));
         }
-        let local_filter: AtomicFilter<BYTES_SIZE, 23, RandomState> = AtomicFilter::with_seed(42);
+        let local_filter: AtomicFilter<FILTER_SIZE, 23, RandomState> = AtomicFilter::with_seed(42);
         for value in 0..1_000_000 {
             local_filter.insert(&value);
         }
@@ -212,8 +211,8 @@ mod tests {
         const READERS: u8 = 2;
         const WRITERS: u8 = 2;
 
-        const BYTES_SIZE: usize = 33_547_705 / 8;
-        let parallel_filter: Arc<AtomicFilter<BYTES_SIZE, 23, RandomState>> =
+        const FILTER_SIZE: usize = 33_547_705;
+        let parallel_filter: Arc<AtomicFilter<FILTER_SIZE, 23, RandomState>> =
             Arc::new(AtomicFilter::with_seed(42));
         // Readers start first as they won't leave until things match, so they can wait for writers
         let mut handles = vec![];
@@ -250,7 +249,7 @@ mod tests {
                 }
             }));
         }
-        let local_filter: AtomicFilter<BYTES_SIZE, 23, RandomState> = AtomicFilter::with_seed(42);
+        let local_filter: AtomicFilter<FILTER_SIZE, 23, RandomState> = AtomicFilter::with_seed(42);
         for value in 0..1_000_000 {
             local_filter.insert(&value);
         }
