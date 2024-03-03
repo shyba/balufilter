@@ -1,6 +1,6 @@
 use core::sync::atomic::Ordering::Relaxed;
 use core::{
-    hash::{BuildHasher, Hash, Hasher},
+    hash::{BuildHasher, Hash},
     sync::atomic::AtomicUsize,
 };
 
@@ -29,15 +29,14 @@ pub struct BlockedAtomicFilter<const M: usize, const K: usize, B: BuildHasher> {
 
 impl<const M: usize, const K: usize, B: BuildHasher> BlockedAtomicFilter<M, K, B> {
     pub fn with_state_and_seed(state: B, seed: u64) -> Self {
-        let mut hasher = state.build_hasher();
         let blocks = core::cmp::max(1, ((M / 8) / ATOMIC_USIZE_SIZE_IN_BYTES) / BLOCK_SIZE);
-        seed.hash(&mut hasher);
+        let seed_hash = state.hash_one(seed);
         BlockedAtomicFilter {
             contents: core::iter::repeat_with(|| core::array::from_fn(|_| AtomicUsize::new(0)))
                 .take(blocks)
                 .collect(),
             hash_builder: state,
-            seed: hasher.finish(),
+            seed: seed_hash,
         }
     }
 }
@@ -61,9 +60,7 @@ impl<T: Hash, const M: usize, const K: usize, B: BuildHasher> BaluFilter<T, M, K
 {
     #[inline]
     fn insert(&self, item: &T) -> bool {
-        let mut hasher = self.hash_builder.build_hasher();
-        item.hash(&mut hasher);
-        let mut hash = hasher.finish() ^ self.seed;
+        let mut hash = self.hash_builder.hash_one(item) ^ self.seed;
         let block_index = hash as usize % self.contents.len();
         let block = &self.contents[block_index];
         let mut found = true;
@@ -84,9 +81,7 @@ impl<T: Hash, const M: usize, const K: usize, B: BuildHasher> BaluFilter<T, M, K
 
     #[inline]
     fn check(&self, item: &T) -> bool {
-        let mut hasher = self.hash_builder.build_hasher();
-        item.hash(&mut hasher);
-        let mut hash = hasher.finish() ^ self.seed;
+        let mut hash = self.hash_builder.hash_one(item) ^ self.seed;
         let block_index = hash as usize % self.contents.len();
         let block = &self.contents[block_index];
         let mut found = true;

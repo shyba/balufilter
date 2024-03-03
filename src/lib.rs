@@ -4,7 +4,7 @@ pub mod blocking;
 use core as std;
 extern crate alloc;
 use alloc::vec::Vec;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::hash::{BuildHasher, Hash};
 use std::sync::atomic::AtomicU8;
 
 #[cfg(feature = "ahasher")]
@@ -28,14 +28,13 @@ pub struct AtomicFilter<const M: usize, const K: usize, B: BuildHasher> {
 
 impl<const M: usize, const K: usize, B: BuildHasher> AtomicFilter<M, K, B> {
     pub fn with_state_and_seed(state: B, seed: u64) -> Self {
-        let mut hasher = state.build_hasher();
-        seed.hash(&mut hasher);
+        let seed_hash = state.hash_one(seed);
         AtomicFilter {
             contents: std::iter::repeat_with(|| AtomicU8::new(0))
                 .take(M / 8)
                 .collect(),
             hash_builder: state,
-            seed: hasher.finish(),
+            seed: seed_hash,
         }
     }
 }
@@ -62,10 +61,8 @@ impl<const M: usize, const K: usize, B: BuildHasher> AtomicFilter<M, K, B> {
     }
     #[inline(always)]
     fn operation<T: Hash, const WRITE: bool>(&self, item: &T) -> bool {
-        let mut hasher = self.hash_builder.build_hasher();
         let mut was_there = true;
-        item.hash(&mut hasher);
-        let mut hash = hasher.finish().wrapping_add(self.seed);
+        let mut hash = self.hash_builder.hash_one(item).wrapping_add(self.seed);
         for round in 1..=(K / 2) {
             if !self.check_round::<WRITE>(hash as u32, &mut was_there) && !WRITE {
                 return false;
