@@ -112,8 +112,6 @@ impl<T: Hash, const M: usize, const K: usize, B: BuildHasher> BaluFilter<T, M, K
 #[cfg(test)]
 mod test {
     extern crate std;
-    use std::prelude::*;
-    use std::println;
 
     use crate::BaluFilter;
     use ahash::RandomState;
